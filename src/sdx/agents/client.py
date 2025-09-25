@@ -6,6 +6,7 @@ Shared OpenAI helper used by all agents.
 """
 
 from __future__ import annotations
+
 import os
 import uuid
 
@@ -79,9 +80,6 @@ def dump_llm_json(text: str, sid: str | None) -> None:
     ts = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     suffix = sid or uuid.uuid4().hex[:8]
     (_RAW_DIR / f'{ts}_{suffix}.json').write_text(text, encoding='utf-8')
-
-
-# ... keep imports and config as you have ...
 
 
 def _assert_output_is_safe(obj: LLMDiagnosis) -> None:

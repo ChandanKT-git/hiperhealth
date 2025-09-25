@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import importlib
 import json
+import logging
 import os
 import warnings
 
@@ -22,11 +24,8 @@ from research.app.main import app
 from research.models.repositories import ResearchRepository
 from research.models.ui import Base
 
-# ---------------------------------------------------------------------------
+
 # Collection modifiers
-# ---------------------------------------------------------------------------
-
-
 def pytest_collection_modifyitems(config, items) -> None:
     """Skip HF-marked tests unless RUN_HF_TESTS=1 is set."""
     run_hf = os.getenv('RUN_HF_TESTS', '0') == '1'
@@ -40,11 +39,7 @@ def pytest_collection_modifyitems(config, items) -> None:
             item.add_marker(skip_hf)
 
 
-# ---------------------------------------------------------------------------
-# OpenTelemetry hard-disable for the whole test session (no monkeypatch)
-# ---------------------------------------------------------------------------
-
-
+# OpenTelemetry hard-disable for the whole test session
 def _setenv_many(pairs: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
     """Set several env vars; return previous values to allow restore."""
     prev: Dict[str, Optional[str]] = {}
@@ -102,11 +97,7 @@ def _shutdown_otel_on_exit() -> None:
         pass
 
 
-# ---------------------------------------------------------------------------
 # HF classifier cache control
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture(autouse=True)
 def _clear_hf_classifier_cache():
     """Clear the zero-shot classifier cache between tests."""
@@ -117,11 +108,7 @@ def _clear_hf_classifier_cache():
     topic_guard._get_classifier.cache_clear()  # type: ignore[attr-defined]
 
 
-# ---------------------------------------------------------------------------
 # Helpers to reload the client module with fresh env
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture()
 def reload_client_module(monkeypatch):
     """(Re)load the client with given env vars applied."""
@@ -140,11 +127,7 @@ def reload_client_module(monkeypatch):
     return _loader
 
 
-# ---------------------------------------------------------------------------
 # Environment and data fixtures
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture
 def env() -> dict[str, str | None]:
     """Return a fixture for the environment variables from .env file."""
