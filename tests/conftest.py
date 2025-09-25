@@ -7,6 +7,7 @@ import os
 import warnings
 
 from pathlib import Path
+from typing import Dict, Optional
 
 import pytest
 
@@ -20,6 +21,128 @@ from sqlalchemy.orm import sessionmaker
 from research.app.main import app
 from research.models.repositories import ResearchRepository
 from research.models.ui import Base
+
+# ---------------------------------------------------------------------------
+# Collection modifiers
+# ---------------------------------------------------------------------------
+
+
+def pytest_collection_modifyitems(config, items) -> None:
+    """Skip HF-marked tests unless RUN_HF_TESTS=1 is set."""
+    run_hf = os.getenv('RUN_HF_TESTS', '0') == '1'
+    if run_hf:
+        return
+    skip_hf = pytest.mark.skip(
+        reason='Set RUN_HF_TESTS=1 to run Hugging Face integration tests.'
+    )
+    for item in items:
+        if 'hf' in item.keywords:
+            item.add_marker(skip_hf)
+
+
+# ---------------------------------------------------------------------------
+# OpenTelemetry hard-disable for the whole test session (no monkeypatch)
+# ---------------------------------------------------------------------------
+
+
+def _setenv_many(pairs: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
+    """Set several env vars; return previous values to allow restore."""
+    prev: Dict[str, Optional[str]] = {}
+    for key, value in pairs.items():
+        prev[key] = os.environ.get(key)
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+    return prev
+
+
+@pytest.fixture(scope='session', autouse=True)
+def _disable_otel_env_session() -> None:
+    """Disable OTEL exporters during the test session."""
+    env_overrides = {
+        'OTEL_SDK_DISABLED': 'true',
+        'OTEL_TRACES_EXPORTER': 'none',
+        'OTEL_METRICS_EXPORTER': 'none',
+        'OTEL_LOGS_EXPORTER': 'none',
+        # Force an unusable endpoint in case something bypasses flags.
+        'OTEL_EXPORTER_OTLP_ENDPOINT': 'http://127.0.0.1:0',
+    }
+    previous = _setenv_many(env_overrides)
+
+    # Quiet OTEL internal loggers to avoid teardown writes to closed streams.
+    for name in (
+        'opentelemetry',
+        'opentelemetry.sdk',
+        'opentelemetry.sdk._shared_internal',
+    ):
+        logger = logging.getLogger(name)
+        logger.handlers[:] = [logging.NullHandler()]
+        logger.propagate = False
+
+    yield
+
+    # Restore previous env after the session (optional).
+    _setenv_many(previous)
+
+
+@pytest.fixture(scope='session', autouse=True)
+def _shutdown_otel_on_exit() -> None:
+    """Stop OTEL background workers before pytest closes streams."""
+    yield
+    try:
+        from opentelemetry import trace  # type: ignore
+
+        provider = trace.get_tracer_provider()
+        shutdown = getattr(provider, 'shutdown', None)
+        if callable(shutdown):
+            shutdown()
+    except Exception:
+        # OTEL not installed or no shutdown available; ignore.
+        pass
+
+
+# ---------------------------------------------------------------------------
+# HF classifier cache control
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _clear_hf_classifier_cache():
+    """Clear the zero-shot classifier cache between tests."""
+    from sdx.guards import topic_guard
+
+    topic_guard._get_classifier.cache_clear()  # type: ignore[attr-defined]
+    yield
+    topic_guard._get_classifier.cache_clear()  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------------------
+# Helpers to reload the client module with fresh env
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def reload_client_module(monkeypatch):
+    """(Re)load the client with given env vars applied."""
+
+    def _loader(**env):
+        for key, val in env.items():
+            if val is None:
+                monkeypatch.delenv(key, raising=False)
+            else:
+                monkeypatch.setenv(key, str(val))
+        import sdx.agents.client as client
+
+        importlib.reload(client)
+        return client
+
+    return _loader
+
+
+# ---------------------------------------------------------------------------
+# Environment and data fixtures
+# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
