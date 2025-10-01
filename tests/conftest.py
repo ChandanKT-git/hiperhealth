@@ -103,9 +103,9 @@ def _clear_hf_classifier_cache():
     """Clear the zero-shot classifier cache between tests."""
     from sdx.guards import topic_guard
 
-    topic_guard._get_classifier.cache_clear()  # type: ignore[attr-defined]
+    topic_guard.get_classifier.cache_clear()  # type: ignore[attr-defined]
     yield
-    topic_guard._get_classifier.cache_clear()  # type: ignore[attr-defined]
+    topic_guard.get_classifier.cache_clear()  # type: ignore[attr-defined]
 
 
 # Helpers to reload the client module with fresh env

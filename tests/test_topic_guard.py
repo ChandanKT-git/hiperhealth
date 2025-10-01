@@ -9,8 +9,6 @@ from sdx.guards.topic_guard import (
     detect_topics,
 )
 
-# ---------- Fast unit tests (no model download) ----------
-
 
 def test_detect_topics_empty_inputs_returns_empty():
     """Test that detect_topics returns empty list on empty inputs."""
@@ -22,13 +20,11 @@ def test_validator_passes_for_harmless_text_fast_path():
     """Test that the validator passes on innocuous text."""
     validator = ConstrainTopic(threshold=0.99)
     # With a very high threshold, even if model later loads, this passes.
-    result = validator.validate('Hello world. How are you?')
+    result = validator.validate('Hello world. How are you?', metadata=None)
     assert result.is_valid, result.error_message
 
 
-# ---------- Integration tests (HF model required) ----------
-
-
+# Integration tests (HF model required)
 @pytest.mark.hf
 @pytest.mark.slow
 def test_detect_topics_flags_violent_threat():
