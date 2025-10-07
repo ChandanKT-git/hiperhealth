@@ -7,10 +7,7 @@ import os
 from functools import lru_cache
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-try:
-    import torch  # optional for CUDA device pick
-except Exception:  # pragma: no cover
-    torch = None  # type: ignore[assignment]
+from sdx.agents.hardware import _get_device_id
 
 from guardrails.classes.validation.validation_result import (
     FailResult as GRFailResult,
@@ -34,7 +31,7 @@ if not hasattr(GRPassResult, 'error_message'):
 
 _MODEL_NAME = os.getenv(
     'TOPIC_DETECTOR_MODEL',
-    'typeform/distilbert-base-uncased-mnli',
+    'MoritzLaurer/mDeBERTa-v3-base-xnli',
 )
 _HYP_TEMPLATE = os.getenv(
     'TOPIC_HYPOTHESIS_TEMPLATE',
@@ -42,24 +39,12 @@ _HYP_TEMPLATE = os.getenv(
 )
 
 
-def _device() -> int:
-    """Return 0 for CUDA if available, else -1 (CPU)."""
-    if (
-        torch is not None
-        and hasattr(torch, 'cuda')
-        and torch.cuda.is_available()
-    ):
-        return 0
-    return -1
-
-
-@lru_cache(maxsize=1)
-def get_classifier() -> Any:
+def create_topic_classifier() -> Any:
     """Create and cache the HF zero-shot classifier."""
     return hf_pipeline(
         'zero-shot-classification',
         model=_MODEL_NAME,
-        device=_device(),
+        device=_get_device_id(),
     )
 
 
@@ -73,7 +58,7 @@ def detect_topics(
     """Return [(label, score), ...] with scores >= threshold (desc)."""
     if not text or not labels:
         return []
-    result: Dict[str, List[Any]] = get_classifier()(
+    result: Dict[str, List[Any]] = create_topic_classifier()(
         text,
         list(labels),
         multi_label=True,
@@ -110,8 +95,8 @@ class ConstrainTopic(Validator):
             'medical dosing advice',
         ]
         self.threshold: float = float(threshold)
+        self._MAX_THRESHOLD: float = 0.99
         self.hypothesis_template: str = hypothesis_template or _HYP_TEMPLATE
-        # Expose Guardrails-style config if your code/tests read it
         self.on_fail: str = str(
             on_fail or os.getenv('SDX_VALIDATOR_ON_FAIL') or 'exception'
         )
@@ -127,7 +112,7 @@ class ConstrainTopic(Validator):
         if not text or not self.banned_topics:
             return GRPassResult()
 
-        if self.threshold >= 0.99:
+        if self.threshold >= self._MAX_THRESHOLD:
             return GRPassResult()
 
         hits = detect_topics(

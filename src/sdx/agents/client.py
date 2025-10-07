@@ -20,7 +20,7 @@ from guardrails.validator_base import FailResult
 from openai import OpenAI
 from pydantic import ValidationError
 
-from sdx.guards.topic_guard import ConstrainTopic
+from sdx.agents.safety.topic_guard import ConstrainTopic
 from sdx.schema.clinical_outputs import LLMDiagnosis
 
 load_dotenv(Path(__file__).parents[3] / '.envs' / '.env')

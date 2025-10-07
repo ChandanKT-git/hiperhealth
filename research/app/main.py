@@ -154,7 +154,7 @@ def patient_to_dict(patient: Patient) -> Dict[str, Any]:
                         'relevance': assoc.relevance,
                         'usefulness': assoc.usefulness,
                         'coherence': assoc.coherence,
-                        'safety': assoc.safety,
+                        'safety': assoc.agents.safety,
                         'comments': assoc.comments,
                     }
                 }

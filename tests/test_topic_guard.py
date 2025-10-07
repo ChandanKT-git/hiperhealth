@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from sdx.guards.topic_guard import (
+from sdx.agents.safety.topic_guard import (
     ConstrainTopic,
     detect_topics,
 )
@@ -21,10 +21,11 @@ def test_validator_passes_for_harmless_text_fast_path():
     validator = ConstrainTopic(threshold=0.99)
     # With a very high threshold, even if model later loads, this passes.
     result = validator.validate('Hello world. How are you?', metadata=None)
-    assert result.is_valid, result.error_message
+    assert getattr(result, 'outcome', None) == 'pass', getattr(
+        result, 'error_message', ''
+    )
 
 
-# Integration tests (HF model required)
 @pytest.mark.hf
 @pytest.mark.slow
 def test_detect_topics_flags_violent_threat():
@@ -56,5 +57,7 @@ def test_constrain_topic_fails_on_dosing_language():
     )
     text = 'Start amoxicillin 500 mg tid for 7 days.'
     result = validator.validate(text)
-    assert not result.is_valid, 'Expected validator to fail on dosing advice.'
-    assert 'Banned topics detected' in (result.error_message or '')
+    assert getattr(result, 'outcome', None) == 'fail'
+    assert 'Banned topics detected' in (
+        getattr(result, 'error_message', '') or ''
+    )

@@ -89,18 +89,7 @@ def _shutdown_otel_on_exit() -> None:
         if callable(shutdown):
             shutdown()
     except Exception:
-        # OTEL not installed or no shutdown available; ignore.
         pass
-
-
-@pytest.fixture(autouse=True)
-def _clear_hf_classifier_cache():
-    """Clear the zero-shot classifier cache between tests."""
-    from sdx.guards import topic_guard
-
-    topic_guard.get_classifier.cache_clear()  # type: ignore[attr-defined]
-    yield
-    topic_guard.get_classifier.cache_clear()  # type: ignore[attr-defined]
 
 
 @pytest.fixture()
