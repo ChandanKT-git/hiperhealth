@@ -88,7 +88,7 @@ def dump_llm_json(text: str, sid: str | None) -> None:
 
 
 def _enforce_topic_safety(obj: LLMDiagnosis) -> None:
-    """Enforce topic policy on the parsed output; raise HTTP 400 on violation."""
+    """Enforce topic policy on the parsed output."""
     if not _TOPIC_GUARD_ENABLED:
         return
     combined = f'{obj.summary}\n' + '\n'.join(obj.options or [])

@@ -23,12 +23,12 @@ def get_device_label() -> str:
     if torch is None:
         return 'cpu'
 
-    if hasattr(torch, 'cuda') and torch.cuda.is_available():  # type: ignore
+    if hasattr(torch, 'cuda') and torch.cuda.is_available():
         return 'cuda:0'
 
     if hasattr(torch, 'backends') and getattr(torch.backends, 'mps', None):
         try:
-            if torch.backends.mps.is_available():  # type: ignore[attr-defined]
+            if torch.backends.mps.is_available():
                 return 'mps'
         except Exception:
             pass
@@ -42,7 +42,7 @@ def get_torch_device() -> Union['torch.device', str]:
     label = get_device_label()
     if torch is None:
         return 'cpu'
-    return torch.device(label)  # type: ignore[arg-type]
+    return torch.device(label)
 
 
 @lru_cache(maxsize=1)
@@ -54,4 +54,8 @@ def _get_device_id() -> int:
     return -1
 
 
-__all__ = ['get_device_label', 'get_torch_device', '_get_device_id']
+__all__ = [
+    '_get_device_id',
+    'get_device_label',
+    'get_torch_device',
+]

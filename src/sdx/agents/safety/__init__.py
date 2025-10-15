@@ -5,7 +5,7 @@ from .topic import ConstrainTopic, detect_topics
 
 __all__ = [
     'SAFETY_SYSTEM_PROMPT',
-    'with_safety',
     'ConstrainTopic',
     'detect_topics',
+    'with_safety',
 ]
