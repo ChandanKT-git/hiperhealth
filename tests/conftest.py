@@ -50,47 +50,6 @@ def _setenv_many(pairs: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
     return prev
 
 
-# @pytest.fixture(scope='session', autouse=True)
-# def _disable_otel_env_session() -> None:
-#     """Disable OTEL exporters during the test session."""
-#     env_overrides = {
-#         'OTEL_SDK_DISABLED': 'true',
-#         'OTEL_TRACES_EXPORTER': 'none',
-#         'OTEL_METRICS_EXPORTER': 'none',
-#         'OTEL_LOGS_EXPORTER': 'none',
-#         'OTEL_EXPORTER_OTLP_ENDPOINT': 'http://127.0.0.1:0',
-#     }
-#     previous = _setenv_many(env_overrides)
-
-#     for name in (
-#         'opentelemetry',
-#         'opentelemetry.sdk',
-#         'opentelemetry.sdk._shared_internal',
-#     ):
-#         logger = logging.getLogger(name)
-#         logger.handlers[:] = [logging.NullHandler()]
-#         logger.propagate = False
-
-#     yield
-
-#     _setenv_many(previous)
-
-
-# @pytest.fixture(scope='session', autouse=True)
-# def _shutdown_otel_on_exit() -> None:
-#     """Stop OTEL background workers before pytest closes streams."""
-#     yield
-#     try:
-#         from opentelemetry import trace  # type: ignore
-
-#         provider = trace.get_tracer_provider()
-#         shutdown = getattr(provider, 'shutdown', None)
-#         if callable(shutdown):
-#             shutdown()
-#     except Exception:
-#         pass
-
-
 @pytest.fixture()
 def reload_client_module(monkeypatch):
     """(Re)load the client with given env vars applied."""

@@ -1,10 +1,4 @@
-"""
-Shared OpenAI helper used by all agents.
-
-* Forces JSON responses (`response_format={"type": "json_object"}`).
-* Validates with ``LLMDiagnosis.from_llm``.
-* Persists every raw reply under ``data/llm_raw/<sid>_<UTC>.json``.
-"""
+"""OpenAI chat helper with schema validation and topic safety."""
 
 from __future__ import annotations
 
@@ -19,9 +13,10 @@ from fastapi import HTTPException
 from openai import APIConnectionError, BadRequestError, OpenAI, RateLimitError
 from pydantic import ValidationError
 
-from sdx.agents.safety import ConstrainTopic, with_safety
+from sdx.agents.safety import _enforce_topic_safety, with_safety
 from sdx.schema.clinical_outputs import LLMDiagnosis
 
+# Load env once
 load_dotenv(Path(__file__).parents[3] / '.envs' / '.env')
 
 _MODEL_NAME = os.getenv('OPENAI_MODEL', 'o4-mini')
@@ -31,71 +26,10 @@ _RAW_DIR = Path('data') / 'llm_raw'
 _RAW_DIR.mkdir(parents=True, exist_ok=True)
 
 
-TOPIC_GUARD_ENABLED = os.getenv('TOPIC_GUARD_ENABLED', '1') != '0'
-TOPIC_GUARD_THRESHOLD = float(os.getenv('TOPIC_GUARD_THRESHOLD', '0.8'))
-
-_DEFAULT_BANNED_TOPIC_LABELS = [
-    'encouraging self-harm',
-    'explicit violent threat',
-    'harassment with violent intent',
-    'suicide instructions',
-    'medical dosing advice',
-]
-
-TOPIC_GUARD_BANNED = [
-    s.strip()
-    for s in os.getenv('TOPIC_GUARD_BANNED', '').split(';')
-    if s.strip()
-] or [
-    'encouraging self-harm',
-    'explicit violent threat',
-    'harassment with violent intent',
-    'suicide instructions',
-    'medical dosing advice',
-]
-
-
-def _env_banned_topics() -> list[str]:
-    """Return banned topic labels from env or the default list."""
-    env_value = os.getenv('TOPIC_GUARD_BANNED')
-    if not env_value:
-        return _DEFAULT_BANNED_TOPIC_LABELS
-    # Split by ';' and keep non-empty trimmed labels
-    return [item.strip() for item in env_value.split(';') if item.strip()]
-
-
-_BANNED_TOPIC_LABELS = _env_banned_topics()
-_TOPIC_GUARD_CONFIDENCE_THRESHOLD = float(
-    os.getenv('TOPIC_GUARD_THRESHOLD', '0.8')
-)
-_TOPIC_GUARD_ENABLED = os.getenv('TOPIC_GUARD_ENABLED', '1') != '0'
-
-_TOPIC_GUARD_VALIDATOR = ConstrainTopic(
-    banned_topics=_BANNED_TOPIC_LABELS,
-    threshold=_TOPIC_GUARD_CONFIDENCE_THRESHOLD,
-)
-
-
-def dump_llm_json(text: str, sid: str | None) -> None:
-    """
-    Save *text* to data/llm_raw/<timestamp>_<sid>.json.
-
-    If *sid* is None, a random 8-char token is used instead.
-    """
+def _save_raw(text: str, sid: str | None) -> None:
     ts = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     suffix = sid or uuid.uuid4().hex[:8]
     (_RAW_DIR / f'{ts}_{suffix}.json').write_text(text, encoding='utf-8')
-
-
-def _enforce_topic_safety(obj: LLMDiagnosis) -> None:
-    """Enforce topic policy on the parsed output."""
-    if not _TOPIC_GUARD_ENABLED:
-        return
-    combined = f'{obj.summary}\n' + '\n'.join(obj.options or [])
-    result = _TOPIC_GUARD_VALIDATOR.validate(combined, metadata=None)
-    if getattr(result, 'outcome', '') == 'fail':
-        msg = getattr(result, 'error_message', 'Banned topics detected.')
-        raise HTTPException(400, f'Unsafe LLM output blocked: {msg}')
 
 
 def chat(
@@ -104,7 +38,7 @@ def chat(
     *,
     session_id: str | None = None,
 ) -> LLMDiagnosis:
-    """Send system/user prompts and return a validated LLMDiagnosis."""
+    """Send system/user prompts, parse to LLMDiagnosis, enforce topic safety."""
     try:
         rsp = _client.chat.completions.create(
             model=_MODEL_NAME,
@@ -119,11 +53,11 @@ def chat(
     except (BadRequestError, APIConnectionError) as exc:
         raise HTTPException(502, f'LLM error: {exc}') from exc
 
-    raw: str = rsp.choices[0].message.content or '{}'
-    dump_llm_json(raw, session_id)
+    content = (rsp.choices[0].message.content or '{}') if rsp.choices else '{}'
+    _save_raw(content, session_id)
 
     try:
-        parsed = LLMDiagnosis.from_llm(raw)
+        parsed = LLMDiagnosis.from_llm(content)
     except ValidationError as exc:
         raise HTTPException(
             422, f'LLM JSON did not match schema: {exc}'
@@ -131,3 +65,6 @@ def chat(
 
     _enforce_topic_safety(parsed)
     return parsed
+
+
+__all__ = ['chat']
