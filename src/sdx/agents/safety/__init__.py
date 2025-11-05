@@ -52,8 +52,8 @@ def _enforce_topic_safety(obj: 'LLMDiagnosis') -> None:
 
 __all__ = [
     'SAFETY_SYSTEM_PROMPT',
-    'with_safety',
     'ConstrainTopic',
-    'detect_topics',
     '_enforce_topic_safety',
+    'detect_topics',
+    'with_safety',
 ]

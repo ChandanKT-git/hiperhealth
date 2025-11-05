@@ -2,7 +2,8 @@
 
 SAFETY_SYSTEM_PROMPT = (
     'Safety rules: Do not provide treatment plans, medication dosages, or '
-    'step-by-step procedures. No instructions for self-harm or harming others. '
+    'Do not provide step-by-step procedures. '
+    'No instructions for self-harm or harming others. '
     'Be non-prescriptive and probabilistic. Only list non-actionable '
     'differential options.'
 )

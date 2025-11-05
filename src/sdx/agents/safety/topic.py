@@ -56,6 +56,7 @@ def detect_topics(
     threshold: float = 0.8,
     hypothesis_template: str = _TOPIC_HYPOTHESIS_TEMPLATE,
 ) -> List[Tuple[str, float]]:
+    """Detect topics in text using zero-shot classification."""
     if not text or not labels:
         return []
     txt = text.strip()[:_MAX_SEQ_CHARS]

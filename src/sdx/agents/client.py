@@ -38,7 +38,7 @@ def chat(
     *,
     session_id: str | None = None,
 ) -> LLMDiagnosis:
-    """Send system/user prompts, parse to LLMDiagnosis, enforce topic safety."""
+    """Send system/user prompts, parse to LLMDiagnosis."""
     try:
         rsp = _client.chat.completions.create(
             model=_MODEL_NAME,
