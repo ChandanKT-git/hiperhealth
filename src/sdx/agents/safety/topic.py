@@ -30,8 +30,10 @@ if not hasattr(GRFailResult, 'is_valid'):
 if not hasattr(GRPassResult, 'error_message'):
     setattr(GRPassResult, 'error_message', property(lambda self: None))
 
+# in topic.py
 _TOPIC_DETECTOR_MODEL = os.getenv(
-    'TOPIC_DETECTOR_MODEL', 'MoritzLaurer/mDeBERTa-v3-base-xnli'
+    'TOPIC_DETECTOR_MODEL',
+    'MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7',
 )
 _TOPIC_HYPOTHESIS_TEMPLATE = os.getenv(
     'TOPIC_HYPOTHESIS_TEMPLATE', 'This text contains {}.'
