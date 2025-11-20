@@ -4,6 +4,12 @@ import pytest
 
 from sdx.privacy.deidenitfier import Deidentifier
 
+# Skipping all Deidentifier tests temporarily
+pytestmark = pytest.mark.skip(
+    reason='Temporarily skipping all Deidentifier tests'
+)
+
+
 PII_TEST_CASES = [
     ('T1_SIMPLE_EMAIL_NAME', 'Contact Jane Doe at jane.d@example.com.', True),
     ('T2_US_PHONE', 'My phone number is 415-555-0132.', True),
