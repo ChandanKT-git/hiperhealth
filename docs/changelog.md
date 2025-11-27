@@ -1,6 +1,23 @@
 # Release Notes
 ---
 
+# [0.3.0](https://github.com/hiperhealth/hiperhealth/compare/0.2.0...0.3.0) (2025-11-27)
+
+
+### Bug Fixes
+
+* Fix issues pointed by linter ([#80](https://github.com/hiperhealth/hiperhealth/issues/80)) ([70bacdd](https://github.com/hiperhealth/hiperhealth/commit/70bacdd144e4215f50bde2a0700fb9b0773b12c7))
+* **research:** Resolve patient creation and submission errors ([#62](https://github.com/hiperhealth/hiperhealth/issues/62)) ([f0ea4ff](https://github.com/hiperhealth/hiperhealth/commit/f0ea4ff3ef758a47eafccd664a1157a5a186cc7f))
+
+
+### Features
+
+*  Add support for persisting data from each step ([#33](https://github.com/hiperhealth/hiperhealth/issues/33)) ([acdb8ee](https://github.com/hiperhealth/hiperhealth/commit/acdb8ee754b7b1030cfa2804e48422bf08c9f68a))
+* Add tests for ResearchRepository and update dependencies ([#69](https://github.com/hiperhealth/hiperhealth/issues/69)) ([7e47ccc](https://github.com/hiperhealth/hiperhealth/commit/7e47ccc2e8c621b5ed1ec16330bd689c4715db86))
+* added step to upload pdf/images test reports in the evaluation pipeline ([#38](https://github.com/hiperhealth/hiperhealth/issues/38)) ([327faf8](https://github.com/hiperhealth/hiperhealth/commit/327faf867c25d67ef9dfaea8875bae09cec744a2))
+* **docs:** Add developer guide and integrate all-contributors ([#49](https://github.com/hiperhealth/hiperhealth/issues/49)) ([261c212](https://github.com/hiperhealth/hiperhealth/commit/261c212cde8f17205d58951956082e1061629f09))
+* **research:** Migrate research app from JSON to SQL database ([#40](https://github.com/hiperhealth/hiperhealth/issues/40)) ([3cfd2a4](https://github.com/hiperhealth/hiperhealth/commit/3cfd2a4fe7d41c828a7342329c571c6e0786c15f))
+
 # [0.2.0](https://github.com/hiperhealth/hiperhealth/compare/0.1.0...0.2.0) (2025-08-15)
 
 
