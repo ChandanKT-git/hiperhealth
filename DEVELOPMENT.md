@@ -119,13 +119,21 @@ All common development tasks are managed via `makim` commands defined in
 
 ### Running the Applications
 
-- **To run the Research Web App:**
+- **To run the Research Frontend:**
 
   ```bash
-  makim research.app
+  makim research.frontend
   ```
 
-  The app will be available at `http://127.0.0.1:8000`.
+  The app will be available at `http://127.0.0.1:5173`.
+
+- **To run the Research Backend:**
+
+  ```bash
+  makim research.backend
+  ```
+
+  The server will listen at `http://127.0.0.1:8000`
 
 - **To run the Research CLI:**
   ```bash
@@ -192,12 +200,12 @@ Our test suite uses `pytest`.
 - **Run All Tests:**
 
   ```bash
-  makim test.run
+  makim tests.run
   ```
 
 - **Run Tests with Coverage Report:**
   ```bash
-  makim test.coverage
+  makim tests.coverage
   ```
 
 ---
