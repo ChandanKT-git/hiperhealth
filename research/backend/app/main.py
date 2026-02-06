@@ -25,7 +25,7 @@ import uuid
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 
@@ -35,7 +35,7 @@ load_dotenv(env_path)
 
 from app.database import SessionLocal
 from app.models.repositories import ResearchRepository
-from app.models.ui import Patient
+from app.models.ui import Consultation, Patient
 from app.reports import (
     load_fhir_reports,
     process_uploaded_reports,
@@ -246,6 +246,129 @@ def patient_to_dict(patient: Patient) -> Dict[str, Any]:
     return patient_dict
 
 
+def _get_latest_consultation(patient: Patient) -> Optional[Consultation]:
+    """Return latest consultation by created_at."""
+    return (
+        max(patient.consultations, key=lambda c: c.timestamp)
+        if patient.consultations
+        else None
+    )
+
+
+def patient_to_ui_data(patient: Patient) -> Dict[str, Any]:
+    """Structure patient data into separate tabs/categories for the UI."""
+    if not patient:
+        return {}
+
+    consultation = _get_latest_consultation(patient)
+
+    # 1. Demographics
+    demographics = {
+        'age': patient.age,
+        'gender': patient.gender,
+        'weight': consultation.weight_kg if consultation else None,
+        'height': consultation.height_cm if consultation else None,
+    }
+
+    # 2. Lifestyle
+    lifestyle = {
+        'diet': consultation.diet if consultation else None,
+        'sleep_hours': consultation.sleep_hours if consultation else None,
+        'physical_activity': consultation.physical_activity
+        if consultation
+        else None,
+        'mental_exercises': consultation.mental_exercises
+        if consultation
+        else None,
+    }
+
+    # 3. Symptoms
+    symptoms = {
+        'symptoms': consultation.symptoms if consultation else None,
+    }
+
+    # 4. Mental Health
+    mental = {
+        'mental_health': consultation.mental_health if consultation else None,
+    }
+
+    # 5. Medical Reports
+    reports_list = []
+    if consultation:
+        reports_list = extract_medical_reports_for_ui(consultation) or []
+
+    medical_reports = {
+        'files': [
+            {
+                'name': r.get('file_name', ''),
+                'type': r.get('resource_type', ''),
+            }
+            for r in reports_list
+        ],
+        'skipped': (
+            not reports_list and consultation.previous_tests is not None
+        )
+        if consultation
+        else False,
+    }
+
+    # 6. Wearable Data
+    def _is_explicitly_skipped_list(value: Optional[List[Any]]) -> bool:
+        """Return True when field was provided but empty."""
+        return isinstance(value, list) and len(value) == 0
+
+    wd: Optional[List[Any]] = (
+        consultation.wearable_data if consultation else None
+    )
+
+    wearable_data = {
+        'data': wd or [],
+        'skipped': _is_explicitly_skipped_list(wd),
+    }
+
+    # 7. Diagnosis
+    diag_raw: Dict[str, Any] = (
+        consultation.ai_diag_raw
+        if consultation and isinstance(consultation.ai_diag_raw, dict)
+        else {}
+    )
+
+    diagnosis = {
+        'suggestions': diag_raw.get('options', []),
+        'summary': diag_raw.get('summary', ''),
+        'selected': [
+            assoc.diagnosis.name for assoc in consultation.selected_diagnoses
+        ]
+        if consultation
+        else [],
+    }
+
+    # 8. Exams
+    exam_raw: Dict[str, Any] = (
+        consultation.ai_exam_raw
+        if consultation and isinstance(consultation.ai_exam_raw, dict)
+        else {}
+    )
+    exams = {
+        'suggestions': exam_raw.get('options', []),
+        'summary': exam_raw.get('summary', ''),
+        'selected': [assoc.exam.name for assoc in consultation.selected_exams]
+        if consultation
+        else [],
+    }
+
+    return {
+        'demographics': demographics,
+        'lifestyle': lifestyle,
+        'symptoms': symptoms,
+        'mental': mental,
+        'medicalReports': medical_reports,
+        'wearableData': wearable_data,
+        'diagnosis': diagnosis,
+        'exams': exams,
+    }
+
+
 def _get_next_step(patient: Patient) -> str:
     """Determine the next step by checking for missing data."""
     if not patient.consultations:
@@ -381,6 +504,7 @@ def get_consultation_status(
         completed_steps=completed_steps,
         is_complete=next_step == 'confirmation',
         patient_dict=record,
+        formData=patient_to_ui_data(patient),
         lang=record.get('meta', {}).get('lang', 'en'),
     )
 
