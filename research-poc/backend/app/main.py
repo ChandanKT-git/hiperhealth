@@ -325,6 +325,7 @@ def post_note(
 def upload_wearable(
     patient_id: str,
     file: UploadFile = File(...),
+    filename: str | None = None,
     db: Session = Depends(get_db),
 ):
     """Upload and store wearable device file for a patient."""
@@ -332,25 +333,27 @@ def upload_wearable(
     if not p:
         raise HTTPException(status_code=404, detail='Patient not found')
 
+    # normalize client filename
+    base_name = filename or file.filename or 'upload'
+
     # validate extension
-    filename = file.filename
-    _, ext = os.path.splitext(filename.lower())
+    _, ext = os.path.splitext(base_name.lower())
     if ext not in ('.csv', '.json'):
         raise HTTPException(status_code=415, detail='Unsupported file type')
 
     # sanitize inputs to prevent path traversal
     safe_pid = _sanitize_patient_id(patient_id)
-    safe_name = _sanitize_filename(filename)
+    safe_name = _sanitize_filename(base_name)
 
     # build collision-proof storage path
     storage_name = _unique_storage_name(safe_pid, safe_name)
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     storage_path = os.path.join(UPLOAD_DIR, storage_name)
 
-    # stream file to disk (bounded memory, atomic create)
-    size = _write_stream_to_file(file.file, storage_path)
-
     try:
+        # stream file to disk (bounded memory, atomic create)
+        size = _write_stream_to_file(file.file, storage_path)
+
         # parse lightweight
         rows, summary = utils.parse_wearable_file(storage_path)
 
@@ -379,7 +382,7 @@ def upload_wearable(
         meta = crud.create_wearable_metadata(
             db,
             patient_id,
-            filename,
+            base_name,
             file.content_type,
             size,
             file_content=file_content,
@@ -392,7 +395,7 @@ def upload_wearable(
             status_code=status.HTTP_201_CREATED,
             content={
                 'id': meta.id,
-                'filename': safe_name,
+                'filename': base_name,
                 'parsed_rows': meta.parsed_rows,
                 'parsed_summary': meta.parsed_summary,
             },
