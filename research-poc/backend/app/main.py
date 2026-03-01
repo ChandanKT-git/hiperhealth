@@ -17,13 +17,40 @@ from . import crud, database, models, schemas, utils
 
 logger = logging.getLogger(__name__)
 
+
+def _get_positive_int_env(name: str, default: int) -> int:
+    """Parse a positive integer from environment with a safe fallback."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(
+            'Invalid integer for env var %s=%r; using default %d',
+            name,
+            raw,
+            default,
+        )
+        return default
+    if value <= 0:
+        logger.warning(
+            'Non-positive value for env var %s=%r; using default %d',
+            name,
+            raw,
+            default,
+        )
+        return default
+    return value
+
+
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), 'uploads')
 utils.ensure_upload_dir(UPLOAD_DIR)
 
 # Configurable limits via environment variables
-MAX_UPLOAD_BYTES = int(os.getenv('MAX_UPLOAD_BYTES', '52428800'))  # 50 MB
-INLINE_BYTES_THRESHOLD = int(
-    os.getenv('INLINE_BYTES_THRESHOLD', '1048576')
+MAX_UPLOAD_BYTES = _get_positive_int_env('MAX_UPLOAD_BYTES', 52428800)  # 50 MB
+INLINE_BYTES_THRESHOLD = _get_positive_int_env(
+    'INLINE_BYTES_THRESHOLD', 1048576
 )  # 1 MB
 
 app = FastAPI(title='research-poc backend')
@@ -52,8 +79,8 @@ def get_db():
 
 
 def _sanitize_patient_id(pid: str) -> str:
-    """Restrict patient_id to a safe character set."""
-    return re.sub(r'[^A-Za-z0-9_.-]', '_', pid)
+    """Restrict patient_id to a safe character set and length."""
+    return re.sub(r'[^A-Za-z0-9_.-]', '_', pid)[:64]
 
 
 def _sanitize_filename(name: str) -> str:
@@ -64,9 +91,14 @@ def _sanitize_filename(name: str) -> str:
 
 
 def _unique_storage_name(patient_id: str, filename: str) -> str:
-    """Build a collision-proof storage name."""
+    """Build a collision-proof storage name within filesystem limits."""
     suffix = secrets.token_hex(8)
-    return f'{patient_id}_{suffix}_{filename}'
+    name = f'{patient_id}_{suffix}_{filename}'
+    # Cap total length to 255 (common FS limit), preserving extension
+    if len(name) > 255:
+        _, ext = os.path.splitext(name)
+        name = name[: 255 - len(ext)] + ext
+    return name
 
 
 def _write_stream_to_file(
@@ -315,6 +347,18 @@ def upload_wearable(
         # parse lightweight
         rows, summary = utils.parse_wearable_file(storage_path)
 
+        # parse_wearable_file catches errors internally and
+        # returns them as summary['error'] instead of raising.
+        if 'error' in summary:
+            logger.warning('Wearable parse error: %s', summary['error'])
+            _cleanup_and_reraise(
+                storage_path,
+                HTTPException(
+                    status_code=400,
+                    detail='Invalid wearable file format',
+                ),
+            )
+
         # preserve DB behaviour for small files
         file_content = None
         if size <= INLINE_BYTES_THRESHOLD:
@@ -342,15 +386,6 @@ def upload_wearable(
                 'parsed_rows': meta.parsed_rows,
                 'parsed_summary': meta.parsed_summary,
             },
-        )
-    except ValueError as exc:
-        logger.warning('Wearable parse error: %s', exc)
-        _cleanup_and_reraise(
-            storage_path,
-            HTTPException(
-                status_code=400,
-                detail='Invalid wearable file format',
-            ),
         )
     except Exception as exc:
         logger.exception('Wearable processing failed')
