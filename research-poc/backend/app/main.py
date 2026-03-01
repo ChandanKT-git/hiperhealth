@@ -1,7 +1,11 @@
 """FastAPI backend for patient data management and wearable file uploads."""
 
+import logging
 import os
+import re
+import secrets
 
+from pathlib import PurePath
 from typing import List
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
@@ -11,8 +15,16 @@ from sqlalchemy.orm import Session
 
 from . import crud, database, models, schemas, utils
 
+logger = logging.getLogger(__name__)
+
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), 'uploads')
 utils.ensure_upload_dir(UPLOAD_DIR)
+
+# Configurable limits via environment variables
+MAX_UPLOAD_BYTES = int(os.getenv('MAX_UPLOAD_BYTES', '52428800'))  # 50 MB
+INLINE_BYTES_THRESHOLD = int(
+    os.getenv('INLINE_BYTES_THRESHOLD', '1048576')
+)  # 1 MB
 
 app = FastAPI(title='research-poc backend')
 
@@ -34,6 +46,74 @@ def on_startup():
 def get_db():
     """Provide database session for dependency injection."""
     yield from database.get_db()
+
+
+# --- Upload security helpers ---
+
+
+def _sanitize_patient_id(pid: str) -> str:
+    """Restrict patient_id to a safe character set."""
+    return re.sub(r'[^A-Za-z0-9_.-]', '_', pid)
+
+
+def _sanitize_filename(name: str) -> str:
+    """Strip path components, allowlist chars, and cap length."""
+    base = PurePath(name or '').name or 'untitled'
+    safe = re.sub(r'[^A-Za-z0-9_.-]', '_', base).strip('.') or 'file'
+    return safe[:128]
+
+
+def _unique_storage_name(patient_id: str, filename: str) -> str:
+    """Build a collision-proof storage name."""
+    suffix = secrets.token_hex(8)
+    return f'{patient_id}_{suffix}_{filename}'
+
+
+def _write_stream_to_file(
+    src,
+    dst_path: str,
+    max_bytes: int = MAX_UPLOAD_BYTES,
+) -> int:
+    """Stream upload to file with size cap and atomic creation."""
+    size = 0
+    try:
+        with open(dst_path, 'xb') as fh:
+            while True:
+                chunk = src.read(1024 * 1024)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > max_bytes:
+                    fh.close()
+                    try:
+                        os.remove(dst_path)
+                    except OSError:
+                        pass
+                    raise HTTPException(
+                        status_code=413,
+                        detail='File too large',
+                    )
+                fh.write(chunk)
+        return size
+    except FileExistsError:
+        raise HTTPException(
+            status_code=409,
+            detail='Upload path collision',
+        )
+
+
+def _cleanup_and_reraise(storage_path: str, err: Exception) -> None:
+    """Remove orphaned file and re-raise with proper semantics."""
+    try:
+        os.remove(storage_path)
+    except OSError:
+        pass
+    if isinstance(err, HTTPException):
+        raise err
+    raise HTTPException(status_code=500, detail='Processing failed')
+
+
+# --- Routes ---
 
 
 @app.post(
@@ -199,7 +279,10 @@ def post_note(
     return {'id': note.id, 'created_at': note.created_at}
 
 
-@app.post('/api/v1/patients/{patient_id}/wearable/upload', status_code=201)
+@app.post(
+    '/api/v1/patients/{patient_id}/wearable/upload',
+    status_code=201,
+)
 def upload_wearable(
     patient_id: str,
     file: UploadFile = File(...),
@@ -216,38 +299,59 @@ def upload_wearable(
     if ext not in ('.csv', '.json'):
         raise HTTPException(status_code=415, detail='Unsupported file type')
 
-    # read file bytes into memory
-    file_content = file.file.read()
-    size = len(file_content)
+    # sanitize inputs to prevent path traversal
+    safe_pid = _sanitize_patient_id(patient_id)
+    safe_name = _sanitize_filename(filename)
 
-    # optionally also save to disk for backup/archival
-    storage_name = f'{patient_id}_{filename}'
+    # build collision-proof storage path
+    storage_name = _unique_storage_name(safe_pid, safe_name)
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
     storage_path = os.path.join(UPLOAD_DIR, storage_name)
-    with open(storage_path, 'wb') as fh:
-        fh.write(file_content)
 
-    # parse lightweight
-    rows, summary = utils.parse_wearable_file(storage_path)
+    # stream file to disk (bounded memory, atomic create)
+    size = _write_stream_to_file(file.file, storage_path)
 
-    # store file content + metadata in DB
-    meta = crud.create_wearable_metadata(
-        db,
-        patient_id,
-        filename,
-        file.content_type,
-        size,
-        file_content=file_content,  # store raw bytes
-        storage_path=storage_path,  # also store path for optional disk access
-        parsed_rows=rows,
-        parsed_summary=summary,
-    )
+    try:
+        # parse lightweight
+        rows, summary = utils.parse_wearable_file(storage_path)
 
-    return JSONResponse(
-        status_code=status.HTTP_201_CREATED,
-        content={
-            'id': meta.id,
-            'filename': meta.filename,
-            'parsed_rows': meta.parsed_rows,
-            'parsed_summary': meta.parsed_summary,
-        },
-    )
+        # preserve DB behaviour for small files
+        file_content = None
+        if size <= INLINE_BYTES_THRESHOLD:
+            with open(storage_path, 'rb') as fh:
+                file_content = fh.read()
+
+        # store metadata in DB
+        meta = crud.create_wearable_metadata(
+            db,
+            patient_id,
+            filename,
+            file.content_type,
+            size,
+            file_content=file_content,
+            storage_path=storage_path,
+            parsed_rows=rows,
+            parsed_summary=summary,
+        )
+
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content={
+                'id': meta.id,
+                'filename': meta.filename,
+                'parsed_rows': meta.parsed_rows,
+                'parsed_summary': meta.parsed_summary,
+            },
+        )
+    except ValueError as exc:
+        logger.warning('Wearable parse error: %s', exc)
+        _cleanup_and_reraise(
+            storage_path,
+            HTTPException(
+                status_code=400,
+                detail='Invalid wearable file format',
+            ),
+        )
+    except Exception as exc:
+        logger.exception('Wearable processing failed')
+        _cleanup_and_reraise(storage_path, exc)
