@@ -90,14 +90,21 @@ def _sanitize_filename(name: str) -> str:
     return safe[:128]
 
 
-def _unique_storage_name(patient_id: str, filename: str) -> str:
+def _unique_storage_name(
+    patient_id: str, filename: str, max_retries: int = 3
+) -> str:
     """Build a collision-proof storage name within filesystem limits."""
-    suffix = secrets.token_hex(8)
-    name = f'{patient_id}_{suffix}_{filename}'
-    # Cap total length to 255 (common FS limit), preserving extension
-    if len(name) > 255:
-        _, ext = os.path.splitext(name)
-        name = name[: 255 - len(ext)] + ext
+    for _ in range(max_retries):
+        suffix = secrets.token_hex(8)
+        name = f'{patient_id}_{suffix}_{filename}'
+        # Cap total length to 255 (common FS limit), preserving extension
+        if len(name) > 255:
+            _, ext = os.path.splitext(name)
+            name = name[: 255 - len(ext)] + ext
+        dest = os.path.join(UPLOAD_DIR, name)
+        if not os.path.exists(dest):
+            return name
+    # Final attempt — let xb mode handle any remaining collision
     return name
 
 
@@ -350,7 +357,10 @@ def upload_wearable(
         # parse_wearable_file catches errors internally and
         # returns them as summary['error'] instead of raising.
         if 'error' in summary:
-            logger.warning('Wearable parse error: %s', summary['error'])
+            logger.warning(
+                'Wearable parse error: %.200s',
+                summary['error'],
+            )
             _cleanup_and_reraise(
                 storage_path,
                 HTTPException(
@@ -382,7 +392,7 @@ def upload_wearable(
             status_code=status.HTTP_201_CREATED,
             content={
                 'id': meta.id,
-                'filename': meta.filename,
+                'filename': safe_name,
                 'parsed_rows': meta.parsed_rows,
                 'parsed_summary': meta.parsed_summary,
             },
