@@ -60,6 +60,12 @@ PyPI.
 - Python 3.11+
 - [Conda](https://github.com/conda-forge/miniforge?tab=readme-ov-file#download)
   installed on your system.
+- **Linux only**: `build-essential` (provides `gcc`) for compiling C extensions
+  used by some pre-commit hooks (e.g. `djlint` depends on the `regex` package):
+  ```bash
+  sudo apt install build-essential   # Debian/Ubuntu
+  # or: sudo dnf install gcc gcc-c++ make   # Fedora/RHEL
+  ```
 
 ### Installation
 
