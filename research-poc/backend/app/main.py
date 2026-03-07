@@ -5,13 +5,18 @@ import os
 
 from typing import List
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    HTTPException,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response as StarletteResponse
 
 from . import crud, database, models, schemas, utils
 
@@ -26,40 +31,8 @@ MAX_REQUEST_BYTES: int = int(
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), 'uploads')
 utils.ensure_upload_dir(UPLOAD_DIR)
 
-
-class MaxBodySizeMiddleware(BaseHTTPMiddleware):
-    """Reject requests exceeding MAX_REQUEST_BYTES at the ASGI layer."""
-
-    def __init__(self, app, max_bytes: int = MAX_REQUEST_BYTES) -> None:
-        """Initialise with configurable byte limit."""
-        super().__init__(app)
-        self.max_bytes = max_bytes
-
-    async def dispatch(self, request: Request, call_next) -> StarletteResponse:
-        """Return 413 when Content-Length exceeds the configured limit."""
-        content_length = request.headers.get('content-length')
-        if content_length is not None:
-            try:
-                length = int(content_length)
-            except ValueError:
-                length = 0
-            if length > self.max_bytes:
-                logger.warning(
-                    'Rejected oversized request: Content-Length=%d > limit=%d',
-                    length,
-                    self.max_bytes,
-                )
-                return JSONResponse(
-                    status_code=413,
-                    content={'detail': 'Request body too large'},
-                )
-        return await call_next(request)
-
-
 app = FastAPI(title='research-poc backend')
 
-
-app.add_middleware(MaxBodySizeMiddleware, max_bytes=MAX_REQUEST_BYTES)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=['*'],
@@ -67,6 +40,30 @@ app.add_middleware(
     allow_methods=['*'],
     allow_headers=['*'],
 )
+
+
+@app.middleware('http')
+async def limit_request_body_size(request: Request, call_next):
+    """Reject requests whose body exceeds MAX_REQUEST_BYTES."""
+    content_length = request.headers.get('content-length')
+    if content_length is not None:
+        try:
+            if int(content_length) > MAX_REQUEST_BYTES:
+                return JSONResponse(
+                    status_code=413,
+                    content={'detail': 'Request body too large'},
+                )
+        except ValueError:
+            pass
+
+    body = await request.body()
+    if len(body) > MAX_REQUEST_BYTES:
+        return JSONResponse(
+            status_code=413,
+            content={'detail': 'Request body too large'},
+        )
+
+    return await call_next(request)
 
 
 @app.on_event('startup')
