@@ -1,5 +1,6 @@
 """FastAPI backend for patient data management and wearable file uploads."""
 
+import logging
 import os
 
 from typing import List
@@ -8,14 +9,57 @@ from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response as StarletteResponse
 
 from . import crud, database, models, schemas, utils
+
+logger = logging.getLogger(__name__)
+
+# Maximum allowed request body size.
+# Applies to all routes.
+MAX_REQUEST_BYTES: int = int(
+    os.getenv('MAX_REQUEST_BYTES', '52428800')
+)  # 50 MB
 
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), 'uploads')
 utils.ensure_upload_dir(UPLOAD_DIR)
 
+
+class MaxBodySizeMiddleware(BaseHTTPMiddleware):
+    """Reject requests exceeding MAX_REQUEST_BYTES at the ASGI layer."""
+
+    def __init__(self, app, max_bytes: int = MAX_REQUEST_BYTES) -> None:
+        """Initialise with configurable byte limit."""
+        super().__init__(app)
+        self.max_bytes = max_bytes
+
+    async def dispatch(self, request: Request, call_next) -> StarletteResponse:
+        """Return 413 when Content-Length exceeds the configured limit."""
+        content_length = request.headers.get('content-length')
+        if content_length is not None:
+            try:
+                length = int(content_length)
+            except ValueError:
+                length = 0
+            if length > self.max_bytes:
+                logger.warning(
+                    'Rejected oversized request: Content-Length=%d > limit=%d',
+                    length,
+                    self.max_bytes,
+                )
+                return JSONResponse(
+                    status_code=413,
+                    content={'detail': 'Request body too large'},
+                )
+        return await call_next(request)
+
+
 app = FastAPI(title='research-poc backend')
 
+
+app.add_middleware(MaxBodySizeMiddleware, max_bytes=MAX_REQUEST_BYTES)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=['*'],
