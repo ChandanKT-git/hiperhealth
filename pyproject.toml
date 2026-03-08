@@ -14,7 +14,6 @@ dependencies = [
     "pypdf >=5.4.0",
     "sqlalchemy >=2.0.41",
     "atpublic >=6",
-    "sqlmodel >=0.0.24",
     "questionary >=2.1.0",
     "pillow >=11.3.0",
     "pytesseract >=0.3.13",
@@ -26,7 +25,6 @@ dependencies = [
     "langchain >=0.3.7,<1",
     "langchain-community >=0.3.7,<1",
     "rago >=0.14.4",
-    "alembic (>=1.17.2,<2.0.0)",
     # NumPy: macOS stays on 1.x; others use 2.x (with your Python guards)
     "numpy >=1.26,<2 ; python_version <  '3.13' and sys_platform == 'darwin'",
     "numpy >=2       ; python_version >= '3.13' and sys_platform == 'darwin'",
@@ -74,7 +72,6 @@ dev = [
   "mkdocstrings-python >= 1.1.2",
   "mkdocs-gen-files >=0.5.0",
   "makim ==1.27.0",
-  "fastapi >=0.115",
   "python-multipart >=0.0.20",
 ]
 
@@ -106,6 +103,9 @@ disable_error_code = [
 [tool.pytest.ini_options]
 testpaths = [
     "tests",
+]
+pythonpath = [
+    "src",
 ]
 filterwarnings = [
     "error::RuntimeWarning",
