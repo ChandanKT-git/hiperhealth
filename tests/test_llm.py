@@ -2,31 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
-
-import pytest
-
 from hiperhealth.llm import (
+    LiteLLMStructuredLLM,
     LLMSettings,
-    RagoStructuredLLM,
     load_diagnostics_llm_settings,
 )
 from hiperhealth.schema.clinical_outputs import LLMDiagnosis
-
-
-class _FakeGeneration:
-    """Capture Rago generation configuration and return fixed content."""
-
-    init_calls: ClassVar[list[dict[str, Any]]] = []
-    generate_calls: ClassVar[list[dict[str, Any]]] = []
-    result: ClassVar[Any] = LLMDiagnosis(summary='ok', options=['a'])
-
-    def __init__(self, **kwargs: Any) -> None:
-        self.__class__.init_calls.append(kwargs)
-
-    def generate(self, query: str, data: list[str]) -> Any:
-        self.__class__.generate_calls.append({'query': query, 'data': data})
-        return self.__class__.result
 
 
 def test_load_diagnostics_llm_settings_prefers_specific_env(monkeypatch):
@@ -55,32 +36,36 @@ def test_load_diagnostics_llm_settings_prefers_specific_env(monkeypatch):
     assert settings.api_params['base_url'] == 'http://localhost:11434/v1'
 
 
-def test_rago_structured_llm_maps_ollama_to_openai_backend():
-    """Structured Ollama calls should use Rago's OpenAI-compatible backend."""
-    _FakeGeneration.init_calls.clear()
-    _FakeGeneration.generate_calls.clear()
-    _FakeGeneration.result = '{"summary":"ok","options":["a"]}'
+def test_litellm_structured_llm_builds_messages_and_kwargs():
+    """Structured generation should map settings into LiteLLM kwargs."""
+    calls: list[dict[str, object]] = []
 
-    llm = RagoStructuredLLM(
-        LLMSettings(provider='ollama', model='llama3.2:3b'),
-        generation_factory=_FakeGeneration,
+    def _fake_completion(**kwargs: object) -> dict[str, object]:
+        calls.append(kwargs)
+        return {
+            'choices': [
+                {'message': {'content': '{"summary":"ok","options":["a"]}'}}
+            ]
+        }
+
+    llm = LiteLLMStructuredLLM(
+        LLMSettings(
+            provider='ollama',
+            model='llama3.2:3b',
+            api_params={'base_url': 'http://localhost:11434/v1'},
+        ),
+        completion_fn=_fake_completion,
     )
 
     result = llm.generate('sys', 'usr', LLMDiagnosis)
 
     assert result.summary == 'ok'
     assert result.options == ['a']
-    assert _FakeGeneration.init_calls[0]['backend'] == 'ollama-openai'
-    assert _FakeGeneration.init_calls[0]['prompt_template'] == '{query}'
-    assert _FakeGeneration.generate_calls[0] == {
-        'query': 'usr',
-        'data': [],
-    }
-
-
-def test_anamnesis_backend_rejects_unsupported_provider():
-    """FHIR extraction should fail for unsupported AnamnesisAI backends."""
-    with pytest.raises(ValueError) as exc:
-        LLMSettings(provider='gemini').to_anamnesis_backend()
-
-    assert 'supports only the openai and ollama providers' in str(exc.value)
+    assert calls[0]['model'] == 'ollama/llama3.2:3b'
+    assert calls[0]['api_base'] == 'http://localhost:11434/v1'
+    messages = calls[0]['messages']
+    assert isinstance(messages, list)
+    assert messages[1] == {'role': 'user', 'content': 'usr'}
+    assert messages[0]['role'] == 'system'
+    assert 'Return only a valid JSON object' in messages[0]['content']
+    assert 'LLMDiagnosis' in messages[0]['content']
