@@ -55,18 +55,21 @@ dependencies, virtual environments, and package versions. Uv/Setuptools also
 includes features such as dependency resolution, lock files, and publishing to
 PyPI.
 
+### Tech Stack Overview
+
+As the core clinical AI engine, this repository relies on:
+
+- **Python 3.10+** for core logic.
+- **LiteLLM** for flexible, provider-agnostic AI model integration.
+- **Pydantic / FHIR** for strict medical data validation.
+- **Douki** for docstring and documentation generation.
+- **Makim** as the task runner.
+
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.10+
 - [Conda](https://github.com/conda-forge/miniforge?tab=readme-ov-file#download)
   installed on your system.
-- **Linux only**: C compiler toolchain and Python headers, required to compile C
-  extensions used by some pre-commit hooks (e.g. `djlint` depends on the `regex`
-  package):
-  ```bash
-  sudo apt install build-essential python3-dev   # Debian/Ubuntu
-  # or: sudo dnf install gcc gcc-c++ make python3-devel   # Fedora/RHEL
-  ```
 
 ### Installation
 
@@ -101,14 +104,7 @@ PyPI.
     ./scripts/install-dev.sh
     ```
 
-4.  **Database & Persistence:** Note: As of the project split, `hiperhealth`
-    (this repository) serves as the core library and is database-independent.
-    All persistence logic, database schemas, and migrations have been moved to
-    the `hiperhealth-web` repository.
-
-    You do not need to set up a local database to contribute to this library.
-
-5.  **(Optional) Set Up API Keys:** Note: The core `hiperhealth` library is
+4.  **(Optional) Set Up API Keys:** Note: The core `hiperhealth` library is
     designed to be functional without external dependencies. However, specific
     modules (such as certain AI Agents or evaluation scripts) may optionally
     require API keys (e.g., `OPENAI_API_KEY`).
@@ -126,38 +122,9 @@ PyPI.
 All common development tasks are managed via `makim` commands defined in
 `.makim.yaml`.
 
-### Running the Applications
-
-- **To run the Research Frontend:**
-
-  ```bash
-  makim research.frontend
-  ```
-
-  The app will be available at `http://127.0.0.1:5173`.
-
-- **To run the Research Backend:**
-
-  ```bash
-  makim research.backend
-  ```
-
-  The server will listen at `http://127.0.0.1:8000`
-
-- **To run the Research CLI:**
-  ```bash
-  makim research.cli
-  ```
-
-### Database Migrations
-
 The core of the `hiperhealth` library is its set of Pydantic models in
 `src/hiperhealth/schema/`. These serve as the source of truth for all medical
 data structures.
-
-While this library is stateless and does not contain a local database, it is
-responsible for generating the SQLAlchemy ORM models used by the
-`hiperhealth-web` service.
 
 If you modify a Pydantic schema that requires a database change:
 
@@ -166,12 +133,6 @@ If you modify a Pydantic schema that requires a database change:
   ```bash
   makim gen.fhir-models
   ```
-
-**Note on Migrations:**
-
-Database migrations (Alembic) are now managed within the hiperhealth-web
-repository. Once your schema changes are merged here, they will be used to
-generate migrations in the web service.
 
 ### Code Style & Linting
 
@@ -197,7 +158,7 @@ configured in `.pre-commit-config.yaml`.
 
 - **Run Hooks Manually:** To run the checks on all files at any time:
   ```bash
-  makim test.pre-commit
+  makim tests.ci
   ```
 
 ### Running Tests
@@ -207,12 +168,12 @@ Our test suite uses `pytest`.
 - **Run All Tests:**
 
   ```bash
-  makim tests.run
+  makim tests.unit
   ```
 
 - **Run Tests with Coverage Report:**
   ```bash
-  makim tests.coverage
+  makim tests.ci
   ```
 
 ---
@@ -321,12 +282,6 @@ The library follows a "schema-first" approach for its database models.
     **auto-generated** from the Pydantic schemas using the
     `scripts/gen_models/gen_sqla.py` script (`makim gen.fhir-models`). **Do not
     edit these files manually.**
-3.  **Alembic Migrations (`migrations/`)**: While this library is stateless, the
-    generated SQLAlchemy models are consumed by the `hiperhealth-web` repository
-    to manage Alembic migrations.
-
-This ensures our application's data layer and database schema are always
-perfectly synchronized.
 
 ---
 
