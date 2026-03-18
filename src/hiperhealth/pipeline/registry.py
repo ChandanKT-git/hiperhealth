@@ -309,8 +309,13 @@ class SkillRegistry:
         """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp) / 'repo'
+            git_path = shutil.which('git')
+            if not git_path:
+                msg = 'git executable not found in PATH'
+                raise RuntimeError(msg)
+
             subprocess.run(
-                ['git', 'clone', '--depth', '1', url, str(tmp_path)],
+                [git_path, 'clone', '--depth', '1', url, str(tmp_path)],
                 check=True,
                 capture_output=True,
             )
@@ -323,7 +328,7 @@ class SkillRegistry:
           deps:
             type: list[str]
         """
-        subprocess.run(
+        subprocess.run(  # nosec B603
             [sys.executable, '-m', 'pip', 'install', *deps],
             check=True,
             capture_output=True,
