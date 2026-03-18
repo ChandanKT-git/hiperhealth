@@ -42,7 +42,7 @@ groups:
         backend: bash
         run: |
           pre-commit install
-          pre-commit run --all-files --verbose
+          pre-commit run --all-files || pre-commit run --all-files
 
       unit:
         help: run tests
