@@ -39,6 +39,7 @@ groups:
     tasks:
       linter:
         help: Run linter tools
+        backend: bash
         run: |
           pre-commit install
           pre-commit run --all-files --verbose
