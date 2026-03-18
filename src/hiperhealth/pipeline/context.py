@@ -9,6 +9,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from hiperhealth.security.context import SecurityContext
+
 
 class AuditEntry(BaseModel):
     """
@@ -55,6 +57,8 @@ class PipelineContext(BaseModel):
         type: list[AuditEntry]
       extras:
         type: dict[str, Any]
+      security_context:
+        type: SecurityContext | None
     """
 
     patient: dict[str, Any] = Field(default_factory=dict)
@@ -63,3 +67,4 @@ class PipelineContext(BaseModel):
     results: dict[str, Any] = Field(default_factory=dict)
     audit: list[AuditEntry] = Field(default_factory=list)
     extras: dict[str, Any] = Field(default_factory=dict)
+    security_context: SecurityContext | None = None

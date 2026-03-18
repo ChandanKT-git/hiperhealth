@@ -14,6 +14,8 @@ from hiperhealth.pipeline.context import PipelineContext
 from hiperhealth.pipeline.skill import BaseSkill, SkillMetadata
 from hiperhealth.pipeline.stages import Stage
 from hiperhealth.schema.clinical_outputs import LLMDiagnosis
+from hiperhealth.security.context import SecurityContext
+from hiperhealth.security.guards import check_authenticated, check_permission
 
 _DIAG_PROMPTS = {
     'en': (
@@ -85,6 +87,7 @@ def differential(
     session_id: str | None = None,
     llm: StructuredLLM | None = None,
     llm_settings: LLMSettings | None = None,
+    security_context: SecurityContext | None = None,
 ) -> LLMDiagnosis:
     """
     title: Return summary + list of differential diagnoses.
@@ -104,10 +107,15 @@ def differential(
       llm_settings:
         type: LLMSettings | None
         description: Value for llm_settings.
+      security_context:
+        type: SecurityContext | None
+        description: Optional security context for access control.
     returns:
       type: LLMDiagnosis
       description: Return value.
     """
+    check_authenticated(security_context)
+    check_permission(security_context, 'read:diagnosis')
     prompt = _DIAG_PROMPTS.get(language, _DIAG_PROMPTS['en'])
     chat_kwargs: dict[str, Any] = {'session_id': session_id}
     if llm is not None:
@@ -127,6 +135,7 @@ def exams(
     session_id: str | None = None,
     llm: StructuredLLM | None = None,
     llm_settings: LLMSettings | None = None,
+    security_context: SecurityContext | None = None,
 ) -> LLMDiagnosis:
     """
     title: Return summary + list of suggested examinations.
@@ -146,10 +155,15 @@ def exams(
       llm_settings:
         type: LLMSettings | None
         description: Value for llm_settings.
+      security_context:
+        type: SecurityContext | None
+        description: Optional security context for access control.
     returns:
       type: LLMDiagnosis
       description: Return value.
     """
+    check_authenticated(security_context)
+    check_permission(security_context, 'read:diagnosis')
     prompt = _EXAM_PROMPTS.get(language, _EXAM_PROMPTS['en'])
     chat_kwargs: dict[str, Any] = {'session_id': session_id}
     if llm is not None:

@@ -15,6 +15,8 @@ from typing import IO, Any, ClassVar, Generic, Literal, TypeVar, cast
 
 import magic
 
+from hiperhealth.security.context import SecurityContext
+from hiperhealth.security.guards import check_authenticated, check_permission
 from hiperhealth.utils import is_float
 
 
@@ -114,7 +116,9 @@ class WearableDataFileExtractor(BaseWearableDataExtractor[FileInput]):
         ]
 
     def extract_wearable_data(
-        self, file: FileInput
+        self,
+        file: FileInput,
+        security_context: SecurityContext | None = None,
     ) -> list[dict[str, object]]:
         """
         title: Extract wearable data from file.
@@ -122,10 +126,15 @@ class WearableDataFileExtractor(BaseWearableDataExtractor[FileInput]):
           file:
             type: FileInput
             description: Value for file.
+          security_context:
+            type: SecurityContext | None
+            description: Optional security context for access control.
         returns:
           type: list[dict[str, object]]
           description: Return value.
         """
+        check_authenticated(security_context)
+        check_permission(security_context, 'read:wearables')
         self._validate_or_raise(file)
         return self._process_file(file)
 

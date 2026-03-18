@@ -4,7 +4,7 @@ title: PII detection, de-identification, and PrivacySkill.
 
 import logging
 
-from typing import Optional
+from typing import Optional, cast
 
 from presidio_analyzer import (
     AnalyzerEngine,
@@ -18,6 +18,8 @@ from presidio_anonymizer.entities import OperatorConfig
 from hiperhealth.pipeline.context import PipelineContext
 from hiperhealth.pipeline.skill import BaseSkill, SkillMetadata
 from hiperhealth.pipeline.stages import Stage
+from hiperhealth.security.context import SecurityContext
+from hiperhealth.security.guards import check_authenticated, check_permission
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +39,7 @@ class Deidentifier:
         title: Initialize the Presidio Analyzer and Anonymizer engines.
         """
         self.analyzer = AnalyzerEngine()
-        self.anonymizer = AnonymizerEngine()  # type: ignore[no-untyped-call]
+        self.anonymizer = AnonymizerEngine()
 
     def add_custom_recognizer(
         self,
@@ -127,12 +129,19 @@ class Deidentifier:
           type: list[RecognizerResult]
           description: Return value.
         """
-        return self.analyzer.analyze(
-            text=text, entities=entities, language=language
+        return cast(
+            list[RecognizerResult],
+            self.analyzer.analyze(
+                text=text, entities=entities, language=language
+            ),
         )
 
     def deidentify(
-        self, text: str, strategy: str = 'mask', language: str = 'en'
+        self,
+        text: str,
+        strategy: str = 'mask',
+        language: str = 'en',
+        security_context: SecurityContext | None = None,
     ) -> str:
         """
         title: Anonymize detected PII in the text using a specified strategy.
@@ -146,10 +155,15 @@ class Deidentifier:
           language:
             type: str
             description: Value for language.
+          security_context:
+            type: SecurityContext | None
+            description: Optional security context for access control.
         returns:
           type: str
           description: Return value.
         """
+        check_authenticated(security_context)
+        check_permission(security_context, 'write:deidentify')
         # First, ensure the provided strategy is supported.
         supported_strategies = ['mask', 'hash']
         if strategy not in supported_strategies:
@@ -187,10 +201,10 @@ class Deidentifier:
 
         anonymized_result = self.anonymizer.anonymize(
             text=text,
-            analyzer_results=analyzer_results,  # type: ignore[arg-type]
+            analyzer_results=analyzer_results,
             operators=operators.get(strategy),
         )
-        return anonymized_result.text
+        return cast(str, anonymized_result.text)
 
 
 _DEFAULT_KEYS_TO_DEIDENTIFY = frozenset(
@@ -210,6 +224,7 @@ def deidentify_patient_record(
     record: dict[str, object],
     deidentifier: Deidentifier,
     keys_to_deidentify: frozenset[str] | None = None,
+    security_context: SecurityContext | None = None,
 ) -> dict[str, object]:
     """
     title: Recursively find and de-identify string values in a patient record.
@@ -227,10 +242,15 @@ def deidentify_patient_record(
       keys_to_deidentify:
         type: frozenset[str] | None
         description: Value for keys_to_deidentify.
+      security_context:
+        type: SecurityContext | None
+        description: Optional security context for access control.
     returns:
       type: dict[str, object]
       description: Return value.
     """
+    check_authenticated(security_context)
+    check_permission(security_context, 'write:deidentify')
     effective_keys = (
         keys_to_deidentify
         if keys_to_deidentify is not None

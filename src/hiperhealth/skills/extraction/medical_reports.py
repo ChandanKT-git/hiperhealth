@@ -25,6 +25,9 @@ from PIL import Image
 from pypdf import PdfReader
 from pypdf.errors import EmptyFileError, PdfStreamError
 
+from hiperhealth.security.context import SecurityContext
+from hiperhealth.security.guards import check_authenticated, check_permission
+
 
 class MedicalReportExtractorError(Exception):
     """
@@ -130,6 +133,7 @@ class MedicalReportFileExtractor(BaseMedicalReportExtractor[FileInput]):
     def extract_report_data(
         self,
         source: FileInput,
+        security_context: SecurityContext | None = None,
     ) -> dict[str, Any]:
         """
         title: Validate input and return extracted text plus basic metadata.
@@ -137,10 +141,15 @@ class MedicalReportFileExtractor(BaseMedicalReportExtractor[FileInput]):
           source:
             type: FileInput
             description: Value for source.
+          security_context:
+            type: SecurityContext | None
+            description: Optional security context for access control.
         returns:
           type: dict[str, Any]
           description: Return value.
         """
+        check_authenticated(security_context)
+        check_permission(security_context, 'read:reports')
         self._validate_or_raise(source)
         return self._process_file(source)
 
@@ -249,17 +258,26 @@ class MedicalReportFileExtractor(BaseMedicalReportExtractor[FileInput]):
         self._text_cache[key] = text
         return text
 
-    def extract_text(self, source: FileInput) -> str:
+    def extract_text(
+        self,
+        source: FileInput,
+        security_context: SecurityContext | None = None,
+    ) -> str:
         """
         title: Validate input and return the extracted raw text only.
         parameters:
           source:
             type: FileInput
             description: Value for source.
+          security_context:
+            type: SecurityContext | None
+            description: Optional security context for access control.
         returns:
           type: str
           description: Return value.
         """
+        check_authenticated(security_context)
+        check_permission(security_context, 'read:reports')
         self._validate_or_raise(source)
         return self._extract_text(source)
 
