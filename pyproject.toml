@@ -107,6 +107,17 @@ disable_error_code = [
   "valid-type",
 ]
 
+[[tool.mypy.overrides]]
+module = "hiperhealth.skills.privacy.deidentifier"
+# presidio-anonymizer ships without type stubs; these errors only appear in
+# environments where stubs are absent (e.g. CI). Suppress them here rather
+# than using # type: ignore comments which break under warn_unused_ignores.
+disable_error_code = [
+  "no-untyped-call",
+  "redundant-cast",
+  "arg-type",
+]
+
 [tool.pytest.ini_options]
 testpaths = [
     "tests",
