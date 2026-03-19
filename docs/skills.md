@@ -18,6 +18,8 @@ When a stage runs, the runner finds all skills that declare that stage in their
 metadata and calls their hooks in **registration order** (the order you pass
 them to `StageRunner`):
 
+0. Optional assessment pass via `StageRunner.check_requirements(stage, session)`
+   which calls `check_requirements()` for matching skills in registration order
 1. All `pre()` hooks (in registration order)
 2. All `execute()` hooks (in registration order)
 3. All `post()` hooks (in registration order)
@@ -114,8 +116,152 @@ class GreetingSkill(BaseSkill):
 
 ## Hooks
 
-Each skill has three hooks that are called per stage. Override only the ones you
-need — the base class provides no-op defaults.
+Each skill has four hooks. Override only the ones you need — the base class
+provides no-op defaults.
+
+### `check_requirements(stage, ctx) -> list[Inquiry]`
+
+Called before execution to determine what information is needed. Return a list
+of `Inquiry` objects describing what data the skill needs. The default returns
+an empty list (no extra data needed).
+
+In the session workflow, callers do not invoke this hook directly. They call
+`StageRunner.check_requirements(stage, session, **kwargs)`, which:
+
+- Builds `ctx` from `session.to_context()`
+- Merges both `session.set_clinical_data()` and `session.provide_answers()` into
+  `ctx.patient`
+- Stores extra keyword arguments in `ctx.extras['_run_kwargs']`
+- Records `check_requirements_started`, `inquiries_raised`, and
+  `check_requirements_completed` events in the session file
+
+That means skill authors should treat `ctx.patient` as the current merged
+clinical state and only return inquiries for fields that are still missing.
+`ctx.results` also contains outputs from previously completed stages. The only
+thing not passed into the hook is the raw session event log itself.
+
+Each inquiry has a **priority** reflecting clinical data availability:
+
+| Priority        | Meaning                                     | Example                          |
+| --------------- | ------------------------------------------- | -------------------------------- |
+| `required`      | Must have before this stage can run         | Basic symptoms for diagnosis     |
+| `supplementary` | Would improve results, available now        | Dietary history, medication list |
+| `deferred`      | Only available after a future pipeline step | Lab results (after exam stage)   |
+
+Example:
+
+```python
+import json
+
+from typing import Literal
+
+from pydantic import BaseModel
+
+from hiperhealth.agents.client import chat_structured
+from hiperhealth.pipeline import BaseSkill, Inquiry, SkillMetadata, Stage
+from hiperhealth.pipeline.context import PipelineContext
+
+
+class InquiryDraft(BaseModel):
+    field: str
+    label: str
+    description: str = ''
+    priority: Literal['required', 'supplementary', 'deferred'] = (
+        'supplementary'
+    )
+    input_type: str = 'text'
+    choices: list[str] | None = None
+
+
+class InquiryDraftList(BaseModel):
+    inquiries: list[InquiryDraft]
+
+
+class GutMicrobiomeSkill(BaseSkill):
+    def __init__(self):
+        super().__init__(SkillMetadata(
+            name='gut_microbiome',
+            stages=(Stage.DIAGNOSIS, Stage.TREATMENT),
+        ))
+
+    def check_requirements(
+        self, stage: str, ctx: PipelineContext
+    ) -> list[Inquiry]:
+        if stage != Stage.DIAGNOSIS:
+            return []
+
+        run_kwargs = ctx.extras.get('_run_kwargs', {})
+        llm = run_kwargs.get('llm')
+        llm_settings = run_kwargs.get('llm_settings')
+
+        system_prompt = (
+            'You are a clinical assistant specialized in gut microbiome care. '
+            'Review the full anamnesis and prior stage outputs. '
+            'Return only the additional information that would be most useful '
+            'for this skill and is not already present. '
+            'Prioritize safety-critical items as "required", useful but '
+            'non-blocking items as "supplementary", and items that naturally '
+            'arrive later as "deferred".'
+        )
+
+        payload = {
+            'patient': ctx.patient,
+            'results': ctx.results,
+            'stage': stage,
+        }
+        response = chat_structured(
+            system_prompt,
+            json.dumps(payload, ensure_ascii=False),
+            InquiryDraftList,
+            session_id=ctx.session_id,
+            llm=llm,
+            llm_settings=llm_settings,
+        )
+
+        existing_fields = set(ctx.patient.keys())
+        return [
+            Inquiry(
+                skill_name=self.metadata.name,
+                stage=stage,
+                field=item.field,
+                label=item.label,
+                description=item.description,
+                priority=item.priority,
+                input_type=item.input_type,
+                choices=item.choices,
+            )
+            for item in response.inquiries
+            if item.field not in existing_fields
+        ]
+```
+
+### Requirement / answer loop
+
+`provide_answers()` does not call any skill hooks by itself. It appends an
+`answers_provided` event, and those fields become part of
+`session.clinical_data` the next time the runner builds a context.
+
+```python
+from hiperhealth.pipeline import Session, Stage, StageRunner
+
+runner = StageRunner(skills=[GutMicrobiomeSkill()])
+session = Session.create('/tmp/case.parquet')
+
+session.set_clinical_data({'symptoms': 'bloating'})
+inquiries = runner.check_requirements(Stage.DIAGNOSIS, session)
+
+session.provide_answers({'dietary_history': 'high carb, low fiber'})
+
+# ctx.patient will now include both symptoms and dietary_history
+inquiries = runner.check_requirements(Stage.DIAGNOSIS, session)
+required = [i for i in inquiries if i.priority == 'required']
+
+if not required:
+    runner.run_session(Stage.DIAGNOSIS, session)
+```
+
+You can inspect `session.pending_inquiries` at any point to see which recorded
+inquiries still do not have matching fields in `session.clinical_data`.
 
 ### `pre(stage, ctx) -> PipelineContext`
 
@@ -183,8 +329,11 @@ class AyurvedaSkill(BaseSkill):
         return ctx
 ```
 
-The `DiagnosticsSkill` checks `ctx.extras['prompt_fragments']` and appends
-matching fragments to the system prompt for each stage.
+The `DiagnosticsSkill` checks `ctx.extras['prompt_fragments']` in two places:
+
+- `{stage}` for the main execution prompt
+- `{stage}_requirements` for the requirement-gathering prompt used by
+  `check_requirements()`
 
 ## Skill registry
 
