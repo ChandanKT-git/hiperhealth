@@ -1,6 +1,13 @@
 # Release Notes
 ---
 
+# [0.6.0](https://github.com/hiperhealth/hiperhealth/compare/0.5.0...0.6.0) (2026-03-21)
+
+
+### Features
+
+* Add support for skills channels ([#216](https://github.com/hiperhealth/hiperhealth/issues/216)) ([843b4df](https://github.com/hiperhealth/hiperhealth/commit/843b4df5a6f26ccf7f8d7c0d17a5843443dae305))
+
 # [0.5.0](https://github.com/hiperhealth/hiperhealth/compare/0.4.0...0.5.0) (2026-03-19)
 
 
